@@ -1,148 +1,412 @@
 import { useQuery } from "@tanstack/react-query";
 import apiClient from "../api/axios";
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 interface Task {
   id: number;
   title: string;
-  description: string;
-  status: string;
-  priority_level: string;
+  description?: string;
+  status?: string;
+  priority_level?: string;
+  assigned_to?: number | null;
+  assignee_name?: string | null;
+  created_at?: string;
 }
 
-// 1. Define the shape of our Operator data
-interface Operator {
-  rank: string;
-  name: string;
-  role: string;
+interface TaskListResponse {
+  data: Task[];
+  meta: {
+    total: number;
+    limit: number;
+    offset: number;
+    has_next: boolean;
+  };
 }
+
+const PAGE_SIZE = 10;
+
+const SORT_FIELDS = [
+  "all",
+  "status",
+  "priority",
+  "newest",
+  "title",
+  "assignee",
+] as const;
+
+type SortField = (typeof SORT_FIELDS)[number];
+type SortDirection = "asc" | "desc";
+
+const normalizeStatusForUi = (status?: string) => {
+  const normalized = (status || "PENDING").toUpperCase();
+  if (normalized === "IN_PROGRESS") return "ACTIVE";
+  if (normalized === "COMPLETED") return "RESOLVED";
+  return normalized;
+};
+
+const getPriorityClass = (priority?: string) => {
+  const normalized = (priority || "LOW").toUpperCase();
+  if (normalized === "CRITICAL") return "bg-[#93000a] text-white";
+  if (normalized === "HIGH") return "bg-[#f59e0b] text-black";
+  if (normalized === "MEDIUM") return "bg-[#4edea3] text-black";
+  return "bg-[#353437] text-[#e5e1e4]";
+};
+
+// Maps frontend sort labels to API sort field names
+const SORT_FIELD_MAP: Record<SortField, string> = {
+  all: "id",
+  newest: "id",
+  status: "status",
+  priority: "priority",
+  title: "title",
+  assignee: "assignee",
+};
 
 export default function Dashboard() {
-  const [operator, setOperator] = useState<Operator | null>(null);
+  const navigate = useNavigate();
+  const [searchText, setSearchText] = useState("");
+  const [sortField, setSortField] = useState<SortField>("all");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [currentPage, setCurrentPage] = useState(1);
 
-  // 2. Read the security badge on load
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      try {
-        // Decode the middle part of the JWT to read the JSON payload
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        setOperator(payload);
-      } catch (error) {
-        console.error("Failed to decode security badge.");
-      }
-    }
-  }, []);
+  // "newest" sorts by ID but the UI label treats "asc" as newest-first (descending ID)
+  const apiSort = SORT_FIELD_MAP[sortField];
+  const apiDirection =
+    sortField === "newest"
+      ? sortDirection === "asc"
+        ? "desc"
+        : "asc"
+      : sortDirection;
 
   const {
-    data: tasks,
+    data: taskResponse,
     isLoading,
-    isError,
+    isFetching,
+    error,
+    refetch,
   } = useQuery({
-    queryKey: ["tasks"],
+    queryKey: ["tasks", currentPage, sortField, sortDirection],
     queryFn: async () => {
-      const response = await apiClient.get("/tasks");
+      const response = await apiClient.get("/tasks", {
+        params: {
+          limit: PAGE_SIZE,
+          offset: (currentPage - 1) * PAGE_SIZE,
+          sort: apiSort,
+          direction: apiDirection,
+        },
+      });
 
       if (Array.isArray(response.data)) {
-        return response.data;
-      } else if (response.data.tasks && Array.isArray(response.data.tasks)) {
-        return response.data.tasks;
-      } else if (response.data.data && Array.isArray(response.data.data)) {
-        return response.data.data;
+        const fallbackRows = response.data as Task[];
+        return {
+          data: fallbackRows,
+          meta: {
+            total: fallbackRows.length,
+            limit: PAGE_SIZE,
+            offset: (currentPage - 1) * PAGE_SIZE,
+            has_next: false,
+          },
+        } as TaskListResponse;
       }
-      return [];
+      if (response.data.tasks && Array.isArray(response.data.tasks)) {
+        const fallbackRows = response.data.tasks as Task[];
+        return {
+          data: fallbackRows,
+          meta: {
+            total: fallbackRows.length,
+            limit: PAGE_SIZE,
+            offset: (currentPage - 1) * PAGE_SIZE,
+            has_next: false,
+          },
+        } as TaskListResponse;
+      }
+      if (response.data.data && Array.isArray(response.data.data)) {
+        return {
+          data: response.data.data as Task[],
+          meta: {
+            total: response.data.meta?.total ?? 0,
+            limit: response.data.meta?.limit ?? PAGE_SIZE,
+            offset: response.data.meta?.offset ?? 0,
+            has_next: Boolean(response.data.meta?.has_next),
+          },
+        } as TaskListResponse;
+      }
+      return {
+        data: [],
+        meta: {
+          total: 0,
+          limit: PAGE_SIZE,
+          offset: (currentPage - 1) * PAGE_SIZE,
+          has_next: false,
+        },
+      } as TaskListResponse;
     },
   });
 
+  const tasks = taskResponse?.data || [];
+  const paginationMeta = taskResponse?.meta;
+
+  const taskRows = useMemo(() => {
+    const rawTasks = Array.isArray(tasks) ? tasks : [];
+
+    return rawTasks.filter((task: Task) => {
+      const rawSearch = `${task.id} ${task.title || ""} ${task.description || ""}`;
+      const matchesSearch = rawSearch
+        .toLowerCase()
+        .includes(searchText.trim().toLowerCase());
+
+      return matchesSearch;
+    });
+  }, [searchText, tasks]);
+
+  const summary = useMemo(() => {
+    const rawTasks = Array.isArray(tasks) ? tasks : [];
+
+    return rawTasks.reduce(
+      (acc, task: Task) => {
+        const status = normalizeStatusForUi(task.status);
+
+        if (status === "PENDING") acc.pending += 1;
+        if (status === "ACTIVE") acc.active += 1;
+        if (status === "RESOLVED") acc.resolved += 1;
+
+        return acc;
+      },
+      { pending: 0, active: 0, resolved: 0 },
+    );
+  }, [tasks]);
+
+  const totalRows = paginationMeta?.total ?? tasks.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+
+  // Sorting is handled server-side; taskRows is already in the correct order
+  const sortedRows = taskRows;
+
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-50 p-8">
-      {/* 3. Updated Header: Title on the left, Operator on the right */}
-      <header className="border-b border-slate-700 pb-6 mb-8 flex justify-between items-end max-w-4xl mx-auto">
-        <div className="text-left">
-          <h1 className="text-3xl font-bold tracking-wider">
-            COMMAND DASHBOARD
-          </h1>
-          <p className="text-emerald-400 text-sm tracking-widest mt-1">
-            STATUS: SECURE CONNECTION ESTABLISHED
+    <main className="flex-1 overflow-hidden p-4 md:p-6">
+      <section className="h-full border border-[#353437] bg-[#1f1f21] p-4 md:p-6 flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-[#919191]">
+              Task Endpoint
+            </p>
+            <h1 className="text-lg font-bold uppercase tracking-widest">
+              GET /tasks
+            </h1>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/create-task")}
+            className="bg-[#4edea3] px-3 py-2 text-[10px] uppercase tracking-[0.2em] font-bold text-black"
+          >
+            Go To POST /tasks
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <div className="border border-[#353437] bg-[#131315] p-3">
+            <p className="text-[10px] uppercase tracking-widest text-[#919191]">
+              Pending
+            </p>
+            <p className="text-lg font-mono text-[#e5e1e4]">
+              {summary.pending}
+            </p>
+          </div>
+          <div className="border border-[#353437] bg-[#131315] p-3">
+            <p className="text-[10px] uppercase tracking-widest text-[#919191]">
+              Active
+            </p>
+            <p className="text-lg font-mono text-[#e5e1e4]">{summary.active}</p>
+          </div>
+          <div className="border border-[#353437] bg-[#131315] p-3">
+            <p className="text-[10px] uppercase tracking-widest text-[#919191]">
+              Resolved
+            </p>
+            <p className="text-lg font-mono text-[#e5e1e4]">
+              {summary.resolved}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-2 flex-wrap">
+          <select
+            value={sortField}
+            onChange={(event) => {
+              setSortField(event.target.value as SortField);
+              setCurrentPage(1);
+            }}
+            className="border border-[#353437] bg-[#131315] px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-[#e5e1e4]"
+          >
+            <option value="all">Sort: All</option>
+            <option value="status">Sort: Status</option>
+            <option value="priority">Sort: Priority</option>
+            <option value="newest">Sort: Newest</option>
+            <option value="title">Sort: Title</option>
+            <option value="assignee">Sort: Assigned</option>
+          </select>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSortDirection((previous) =>
+                previous === "asc" ? "desc" : "asc",
+              );
+              setCurrentPage(1);
+            }}
+            className="border border-[#353437] bg-[#131315] px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-[#e5e1e4]"
+          >
+            {sortDirection === "asc" ? "Asc" : "Desc"}
+          </button>
+
+          <input
+            value={searchText}
+            onChange={(event) => setSearchText(event.target.value)}
+            placeholder="Search title or description"
+            className="min-w-64 flex-1 border border-[#353437] bg-[#131315] px-3 py-2 text-xs font-mono"
+          />
+
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="border border-[#353437] bg-[#131315] px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-[#e5e1e4]"
+          >
+            {isFetching ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+
+        {error && (
+          <p className="border border-[#93000a] bg-[#93000a] px-3 py-2 text-xs font-mono text-white">
+            Failed to fetch tasks.
           </p>
-        </div>
-
-        {operator && (
-          <div className="text-right border-l border-slate-700 pl-6">
-            <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">
-              ACTIVE OPERATOR
-            </p>
-            <p className="text-lg font-bold text-slate-100 tracking-wide">
-              {operator.rank} {operator.name}
-            </p>
-            <p className="text-xs text-emerald-500 font-mono mt-1">
-              [{operator.role} ACCESS]
-            </p>
-          </div>
         )}
-      </header>
 
-      <main className="max-w-4xl mx-auto">
-        <div className="bg-slate-800 p-6 rounded border border-slate-700">
-          <h2 className="text-xl font-semibold mb-6 text-slate-300 text-center">
-            ACTIVE MISSIONS (TASKS)
-          </h2>
+        <div className="border border-[#353437] bg-[#131315] flex-1 overflow-auto">
+          <table className="min-w-full text-left">
+            <thead>
+              <tr className="border-b border-[#353437] text-[10px] uppercase tracking-[0.2em] text-[#919191]">
+                <th className="px-3 py-2 font-normal">ID</th>
+                <th className="px-3 py-2 font-normal">Title</th>
+                <th className="px-3 py-2 font-normal">Priority</th>
+                <th className="px-3 py-2 font-normal">Status</th>
+                <th className="px-3 py-2 font-normal">Assigned To</th>
+                <th className="px-3 py-2 font-normal text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr>
+                  <td className="px-3 py-4 text-sm text-[#919191]" colSpan={6}>
+                    Running GET /tasks...
+                  </td>
+                </tr>
+              )}
 
-          {isLoading && (
-            <div className="text-emerald-500 animate-pulse tracking-widest text-sm text-center">
-              DOWNLOADING MISSION DATA...
-            </div>
-          )}
+              {!isLoading && sortedRows.length === 0 && (
+                <tr>
+                  <td className="px-3 py-4 text-sm text-[#919191]" colSpan={6}>
+                    API returned zero task records.
+                  </td>
+                </tr>
+              )}
 
-          {isError && (
-            <div className="text-red-400 bg-red-900/20 p-4 border border-red-800 rounded text-center">
-              CRITICAL ERROR: Failed to retrieve task list from Headquarters.
-            </div>
-          )}
+              {!isLoading &&
+                sortedRows.map((task: Task) => (
+                  <tr
+                    key={task.id}
+                    className="border-b border-[#2a2a2c] text-sm"
+                  >
+                    <td className="px-3 py-3 font-mono">{task.id}</td>
+                    <td className="px-3 py-3">
+                      <p className="font-semibold">{task.title}</p>
+                      <p className="text-xs text-[#919191] mt-1 line-clamp-1">
+                        {task.description || "No description"}
+                      </p>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span
+                        className={`inline-block px-2 py-1 text-[10px] uppercase tracking-widest ${getPriorityClass(task.priority_level)}`}
+                      >
+                        {task.priority_level || "LOW"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 font-mono text-xs">
+                      {normalizeStatusForUi(task.status)}
+                    </td>
+                    <td className="px-3 py-3 font-mono text-xs text-[#919191]">
+                      {task.assignee_name ||
+                        (task.assigned_to
+                          ? `ID:${task.assigned_to}`
+                          : "Unassigned")}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate(`/mission/${task.id}`, {
+                              state: { task },
+                            })
+                          }
+                          className="border border-[#353437] px-2 py-1 text-[10px] uppercase tracking-widest"
+                        >
+                          DETAIL
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
 
-          {tasks && tasks.length === 0 && (
-            <p className="text-slate-400 text-center">
-              No active missions on the board.
-            </p>
-          )}
-
-          <div className="grid gap-4 text-left">
-            {tasks &&
-              tasks.map((task: Task) => (
-                <div
-                  key={task.id}
-                  className="bg-slate-700/50 p-4 rounded border border-slate-600 flex justify-between items-center hover:bg-slate-700 transition-colors"
-                >
-                  <div>
-                    <h3 className="font-bold text-lg text-slate-100">
-                      {task.title}
-                    </h3>
-                    <p className="text-sm text-slate-400 mt-1">
-                      {task.description}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0 ml-4">
-                    <span
-                      className={`inline-block px-2 py-1 text-xs font-bold rounded mb-2
-                    ${
-                      task.priority_level === "CRITICAL"
-                        ? "bg-red-600 text-white"
-                        : task.priority_level === "HIGH"
-                          ? "bg-orange-500 text-white"
-                          : "bg-slate-600 text-slate-200"
-                    }`}
-                    >
-                      {task.priority_level}
-                    </span>
-                    <p className="text-xs text-slate-400 uppercase">
-                      {task.status}
-                    </p>
-                  </div>
-                </div>
-              ))}
+        <div className="flex items-center justify-between border border-[#353437] bg-[#131315] px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-[#919191]">
+          <p>
+            Page {currentPage} of {totalPages} | Total Tasks: {totalRows}
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1 || isFetching}
+              className="border border-[#353437] px-3 py-1 text-[#e5e1e4] disabled:opacity-40"
+            >
+              First
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentPage((previous) => Math.max(1, previous - 1))
+              }
+              disabled={currentPage === 1 || isFetching}
+              className="border border-[#353437] px-3 py-1 text-[#e5e1e4] disabled:opacity-40"
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setCurrentPage((previous) =>
+                  paginationMeta?.has_next ? previous + 1 : previous,
+                )
+              }
+              disabled={!paginationMeta?.has_next || isFetching}
+              className="border border-[#353437] px-3 py-1 text-[#e5e1e4] disabled:opacity-40"
+            >
+              Next
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages || isFetching}
+              className="border border-[#353437] px-3 py-1 text-[#e5e1e4] disabled:opacity-40"
+            >
+              Last
+            </button>
           </div>
         </div>
-      </main>
-    </div>
+      </section>
+    </main>
   );
 }
