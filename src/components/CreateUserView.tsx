@@ -4,43 +4,14 @@ import { z } from "zod";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import apiClient from "../api/axios";
-
-const rankValues = [
-  "PVT",
-  "PV2",
-  "PFC",
-  "SPC",
-  "CPL",
-  "SGT",
-  "SSG",
-  "SFC",
-  "MSG",
-  "1SG",
-  "SGM",
-  "CSM",
-  "SMA",
-  "WO1",
-  "CW2",
-  "CW3",
-  "CW4",
-  "CW5",
-  "2LT",
-  "1LT",
-  "CPT",
-  "MAJ",
-  "LTC",
-  "COL",
-  "BG",
-  "MG",
-  "LTG",
-  "GEN",
-] as const;
+import { getApiErrorMessage } from "../utils/apiError";
+import { militaryRankValues } from "../schemas/patchUserSchema";
 
 const createUserSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email format"),
   password: z.string().min(8, "Password must be at least 8 characters"),
-  rank: z.enum(rankValues),
+  rank: z.enum(militaryRankValues),
 });
 
 type CreateUserFormInputs = z.infer<typeof createUserSchema>;
@@ -60,7 +31,7 @@ export default function CreateUserView() {
       name: "",
       email: "",
       password: "",
-      rank: "CPT",
+      rank: "CPT" as const,
     },
   });
 
@@ -71,29 +42,28 @@ export default function CreateUserView() {
     try {
       await apiClient.post("/users", data);
       setServerMessage("POST /users succeeded. Operator created.");
+      setTimeout(() => navigate("/login"), 1500);
     } catch (caughtError: unknown) {
-      const err = caughtError as {
-        response?: { data?: { message?: string } };
-      };
-
       setServerError(
-        err.response?.data?.message ||
-          "POST /users failed. Commander token (CPT+, TOP SECRET) may be required.",
+        getApiErrorMessage(
+          caughtError,
+          "POST /users failed. Check your input and try again.",
+        ),
       );
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#131315] text-[#e5e1e4] flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl border border-[#353437] bg-[#1f1f21] p-8">
-        <header className="mb-8 border-b border-[#353437] pb-4">
+    <main className="flex-1 overflow-auto p-4 md:p-6">
+      <section className="mx-auto max-w-2xl border border-[#353437] bg-[#1f1f21] p-6">
+        <header className="mb-6 border-b border-[#353437] pb-4">
           <p className="text-[10px] uppercase tracking-[0.2em] text-[#4edea3]">
             USER CREATE TEST
           </p>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight uppercase">
+          <h1 className="mt-2 text-lg font-bold tracking-tight uppercase">
             POST /users
           </h1>
-          <p className="mt-2 text-xs text-[#919191] uppercase tracking-widest">
+          <p className="mt-1 text-xs text-[#919191] uppercase tracking-widest">
             Requires Commander Authorization
           </p>
         </header>
@@ -172,7 +142,7 @@ export default function CreateUserView() {
                 {...register("rank")}
                 className="w-full border border-[#353437] bg-[#353437] px-3 py-3 text-sm"
               >
-                {rankValues.map((rank) => (
+                {militaryRankValues.map((rank) => (
                   <option key={rank} value={rank}>
                     {rank}
                   </option>
@@ -201,7 +171,7 @@ export default function CreateUserView() {
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
-              onClick={() => navigate("/login")}
+              onClick={() => navigate("/dashboard")}
               className="border border-[#353437] bg-[#131315] px-4 py-2 text-[10px] uppercase tracking-[0.2em]"
             >
               Back To Login
@@ -215,7 +185,7 @@ export default function CreateUserView() {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import apiClient from "../api/axios";
+import { getApiErrorMessage } from "../utils/apiError";
 
 const loginSchema = z.object({
   email: z.string().email("Invalid operator email format"),
@@ -37,13 +38,11 @@ export default function Login() {
       localStorage.setItem("token", response.data.token);
       navigate("/dashboard");
     } catch (caughtError: unknown) {
-      const err = caughtError as {
-        response?: { data?: { message?: string } };
-      };
-
       setServerError(
-        err.response?.data?.message ||
+        getApiErrorMessage(
+          caughtError,
           "Authentication failed. Check credentials.",
+        ),
       );
     }
   };

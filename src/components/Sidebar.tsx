@@ -1,16 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-
-function readOperatorRole() {
-  const token = localStorage.getItem("token");
-  if (!token) return null;
-
-  try {
-    const payload = JSON.parse(atob(token.split(".")[1])) as { role?: string };
-    return payload.role || null;
-  } catch {
-    return null;
-  }
-}
+import { readOperatorRole } from "../utils/authToken";
 
 export default function Sidebar() {
   const navigate = useNavigate();
@@ -19,7 +8,10 @@ export default function Sidebar() {
     { label: "GET /tasks", icon: "GET", to: "/dashboard" },
     { label: "POST /tasks", icon: "POST", to: "/create-task" },
     ...(operatorRole === "ADMIN"
-      ? [{ label: "LOGS", icon: "LOG", to: "/logs" }]
+      ? [
+          { label: "GET /users", icon: "GET", to: "/operator-roster" },
+          { label: "LOGS", icon: "LOG", to: "/logs" },
+        ]
       : []),
   ];
 

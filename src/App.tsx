@@ -9,6 +9,9 @@ import TaskDetailView from "./components/TaskDetailView";
 import CreateTaskView from "./components/CreateTaskView";
 import PatchTaskView from "./components/PatchTaskView";
 import DeleteTaskView from "./components/DeleteTaskView";
+import OperatorRosterView from "./components/OperatorRosterView.tsx";
+import PatchUserView from "./components/PatchUserView.tsx";
+import DeleteUserView from "./components/DeleteUserView.tsx";
 import ProtectedRoute from "./components/ProtectedRoute";
 import MainLayout from "./layouts/MainLayout";
 
@@ -30,6 +33,12 @@ function App() {
               <Route element={<ProtectedRoute requiredRole="ADMIN" />}>
                 <Route path="/logs" element={<LogsView />} />
                 <Route path="/delete-task/:id" element={<DeleteTaskView />} />
+                <Route
+                  path="/operator-roster"
+                  element={<OperatorRosterView />}
+                />
+                <Route path="/patch-user/:id" element={<PatchUserView />} />
+                <Route path="/delete-user/:id" element={<DeleteUserView />} />
               </Route>
               <Route path="/create-task" element={<CreateTaskView />} />
               <Route path="/mission/:id" element={<TaskDetailView />} />

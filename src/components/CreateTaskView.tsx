@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import apiClient from "../api/axios";
 import {
@@ -8,9 +8,18 @@ import {
   type CreateTaskFormInputs,
   priorityValues,
 } from "../schemas/createTaskSchema";
+import { getApiErrorMessage } from "../utils/apiError";
+import { QUERY_KEYS } from "../constants/queryKeys";
+import { parseCollectionResponse } from "../api/responseParsers";
+
+interface User {
+  id: number;
+  name: string;
+}
 
 export default function CreateTaskView() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const {
     register,
@@ -26,6 +35,26 @@ export default function CreateTaskView() {
     },
   });
 
+  const {
+    data: users,
+    isLoading: isUsersLoading,
+    error: usersError,
+  } = useQuery({
+    queryKey: QUERY_KEYS.users,
+    queryFn: async () => {
+      const response = await apiClient.get("/users", {
+        params: {
+          limit: 100,
+          offset: 0,
+        },
+      });
+
+      return parseCollectionResponse<User>(response.data);
+    },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
   const createMissionMutation = useMutation({
     mutationFn: async (formData: CreateTaskFormInputs) => {
       const payload = {
@@ -39,7 +68,8 @@ export default function CreateTaskView() {
 
       return apiClient.post("/tasks", payload);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.tasks });
       navigate("/dashboard");
     },
   });
@@ -113,13 +143,38 @@ export default function CreateTaskView() {
 
             <div>
               <label className="block mb-2 text-[10px] uppercase tracking-[0.2em] text-[#919191]">
-                assigned_to (User ID)
+                assigned_to
               </label>
-              <input
-                {...register("assignedTo")}
-                placeholder="Optional: 12"
-                className="w-full border border-[#353437] bg-[#353437] px-3 py-3 text-sm font-mono"
-              />
+              {usersError ? (
+                <>
+                  <input
+                    {...register("assignedTo")}
+                    placeholder="Optional fallback: User ID"
+                    className="w-full border border-[#353437] bg-[#353437] px-3 py-3 text-sm font-mono"
+                  />
+                  <p className="mt-1 text-xs font-mono text-red-400">
+                    {getApiErrorMessage(
+                      usersError,
+                      "Failed to load operator roster. Use user ID fallback.",
+                    )}
+                  </p>
+                </>
+              ) : (
+                <select
+                  {...register("assignedTo")}
+                  disabled={isUsersLoading}
+                  className="w-full border border-[#353437] bg-[#353437] px-3 py-3 text-sm"
+                >
+                  <option value="">
+                    {isUsersLoading ? "Loading roster..." : "Unassigned"}
+                  </option>
+                  {(users || []).map((user) => (
+                    <option key={user.id} value={String(user.id)}>
+                      {user.name} (#{user.id})
+                    </option>
+                  ))}
+                </select>
+              )}
               {errors.assignedTo && (
                 <p className="mt-1 text-xs font-mono text-red-400">
                   {errors.assignedTo.message}

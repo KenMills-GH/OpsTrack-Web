@@ -1,8 +1,18 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AxiosError } from "axios";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import apiClient from "../api/axios";
+import {
+  patchTaskSchema,
+  patchTaskPriorityValues,
+  patchTaskStatusValues,
+  type PatchTaskFormInputs,
+} from "../schemas/patchTaskSchema";
+import { getApiErrorMessage } from "../utils/apiError";
+import { QUERY_KEYS } from "../constants/queryKeys";
+import { parseCollectionResponse } from "../api/responseParsers";
 
 interface Task {
   id: number;
@@ -29,26 +39,35 @@ export default function PatchTaskView() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [status, setStatus] = useState("PENDING");
-  const [priority, setPriority] = useState("LOW");
-  const [assignedTo, setAssignedTo] = useState("");
   const [message, setMessage] = useState<string | null>(null);
 
   const {
-    data: tasks,
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<PatchTaskFormInputs>({
+    resolver: zodResolver(patchTaskSchema),
+    defaultValues: {
+      status: "PENDING",
+      priority_level: "LOW",
+      assigned_to: "",
+    },
+  });
+
+  const {
+    data: task,
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["tasks"],
+    queryKey: QUERY_KEYS.task(id),
+    enabled: Boolean(id),
     queryFn: async () => {
-      const response = await apiClient.get("/tasks");
-      if (Array.isArray(response.data)) return response.data as Task[];
-      if (Array.isArray(response.data.tasks))
-        return response.data.tasks as Task[];
-      if (Array.isArray(response.data.data))
-        return response.data.data as Task[];
-      return [] as Task[];
+      const response = await apiClient.get(`/tasks/${id}`);
+      return response.data as Task;
     },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const {
@@ -56,7 +75,7 @@ export default function PatchTaskView() {
     isLoading: isUsersLoading,
     error: usersError,
   } = useQuery({
-    queryKey: ["users"],
+    queryKey: QUERY_KEYS.users,
     queryFn: async () => {
       const response = await apiClient.get("/users", {
         params: {
@@ -65,45 +84,50 @@ export default function PatchTaskView() {
         },
       });
 
-      if (Array.isArray(response.data)) return response.data as User[];
-      if (Array.isArray(response.data.users))
-        return response.data.users as User[];
-      if (Array.isArray(response.data.data))
-        return response.data.data as User[];
-      return [] as User[];
+      return parseCollectionResponse<User>(response.data);
     },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
-
-  const task = (tasks || []).find((entry) => String(entry.id) === id);
 
   useEffect(() => {
     if (!task) return;
-    setStatus(normalizePatchStatus(task.status));
-    setPriority((task.priority_level || "LOW").toUpperCase());
-    setAssignedTo(task.assigned_to ? String(task.assigned_to) : "");
-  }, [task]);
+    reset({
+      status: normalizePatchStatus(
+        task.status,
+      ) as PatchTaskFormInputs["status"],
+      priority_level: (
+        task.priority_level || "LOW"
+      ).toUpperCase() as PatchTaskFormInputs["priority_level"],
+      assigned_to: task.assigned_to ? String(task.assigned_to) : "",
+    });
+  }, [task, reset]);
 
   const patchMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (values: PatchTaskFormInputs) => {
       if (!id) return;
       const payload = {
-        status,
-        priority_level: priority,
-        ...(assignedTo.trim() ? { assigned_to: Number(assignedTo) } : {}),
+        status: values.status,
+        priority_level: values.priority_level,
+        ...(values.assigned_to?.trim()
+          ? { assigned_to: Number(values.assigned_to) }
+          : {}),
       };
       return apiClient.patch(`/tasks/${id}`, payload);
     },
     onSuccess: async () => {
       setMessage("PATCH /tasks/:id succeeded.");
-      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.task(id) });
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.tasks });
     },
     onError: (caughtError) => {
-      const axiosError = caughtError as AxiosError<{ message?: string }>;
-      setMessage(
-        axiosError.response?.data?.message || "PATCH /tasks/:id failed.",
-      );
+      setMessage(getApiErrorMessage(caughtError, "PATCH /tasks/:id failed."));
     },
   });
+
+  const onSubmit = (values: PatchTaskFormInputs) => {
+    patchMutation.mutate(values);
+  };
 
   return (
     <main className="flex-1 overflow-auto p-4 md:p-6">
@@ -118,13 +142,9 @@ export default function PatchTaskView() {
         </header>
 
         {isLoading && <p className="text-sm text-[#919191]">Loading task...</p>}
-        {error && (
-          <p className="text-sm text-red-400">Failed to load task list.</p>
-        )}
-        {!isLoading && !task && (
-          <p className="text-sm text-[#919191]">
-            Task not found in current response set.
-          </p>
+        {error && <p className="text-sm text-red-400">Failed to load task.</p>}
+        {!isLoading && !error && !task && (
+          <p className="text-sm text-[#919191]">Task not found.</p>
         )}
 
         {task && (
@@ -138,20 +158,29 @@ export default function PatchTaskView() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <form
+              onSubmit={handleSubmit(onSubmit)}
+              className="grid grid-cols-1 md:grid-cols-3 gap-3"
+            >
               <div>
                 <label className="block mb-2 text-[10px] uppercase tracking-[0.2em] text-[#919191]">
                   status
                 </label>
                 <select
-                  value={status}
-                  onChange={(event) => setStatus(event.target.value)}
+                  {...register("status")}
                   className="w-full border border-[#353437] bg-[#353437] px-3 py-3 text-sm"
                 >
-                  <option value="PENDING">PENDING</option>
-                  <option value="COMPLETED">COMPLETED</option>
-                  <option value="ARCHIVED">ARCHIVED</option>
+                  {patchTaskStatusValues.map((statusValue) => (
+                    <option key={statusValue} value={statusValue}>
+                      {statusValue}
+                    </option>
+                  ))}
                 </select>
+                {errors.status && (
+                  <p className="mt-1 text-xs font-mono text-red-400">
+                    {errors.status.message}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -159,15 +188,20 @@ export default function PatchTaskView() {
                   priority_level
                 </label>
                 <select
-                  value={priority}
-                  onChange={(event) => setPriority(event.target.value)}
+                  {...register("priority_level")}
                   className="w-full border border-[#353437] bg-[#353437] px-3 py-3 text-sm"
                 >
-                  <option value="LOW">LOW</option>
-                  <option value="MEDIUM">MEDIUM</option>
-                  <option value="HIGH">HIGH</option>
-                  <option value="CRITICAL">CRITICAL</option>
+                  {patchTaskPriorityValues.map((priorityValue) => (
+                    <option key={priorityValue} value={priorityValue}>
+                      {priorityValue}
+                    </option>
+                  ))}
                 </select>
+                {errors.priority_level && (
+                  <p className="mt-1 text-xs font-mono text-red-400">
+                    {errors.priority_level.message}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -175,8 +209,7 @@ export default function PatchTaskView() {
                   assigned_to
                 </label>
                 <select
-                  value={assignedTo}
-                  onChange={(event) => setAssignedTo(event.target.value)}
+                  {...register("assigned_to")}
                   disabled={isUsersLoading || Boolean(usersError)}
                   className="w-full border border-[#353437] bg-[#353437] px-3 py-3 text-sm"
                 >
@@ -189,11 +222,16 @@ export default function PatchTaskView() {
                 </select>
                 {usersError && (
                   <p className="mt-1 text-xs font-mono text-red-400">
-                    Failed to load roster.
+                    {getApiErrorMessage(usersError, "Failed to load roster.")}
+                  </p>
+                )}
+                {errors.assigned_to && (
+                  <p className="mt-1 text-xs font-mono text-red-400">
+                    {errors.assigned_to.message}
                   </p>
                 )}
               </div>
-            </div>
+            </form>
 
             {message && (
               <p className="border border-[#353437] bg-[#131315] px-3 py-2 text-xs font-mono text-[#e5e1e4]">
@@ -211,7 +249,7 @@ export default function PatchTaskView() {
               </button>
               <button
                 type="button"
-                onClick={() => patchMutation.mutate()}
+                onClick={handleSubmit(onSubmit)}
                 disabled={patchMutation.isPending}
                 className="bg-[#4edea3] px-4 py-2 text-[10px] uppercase tracking-[0.2em] text-black font-bold disabled:opacity-50"
               >

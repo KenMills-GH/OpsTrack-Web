@@ -2,6 +2,10 @@ import { useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import apiClient from "../api/axios";
+import { readOperatorRole } from "../utils/authToken";
+import { normalizeTaskStatusForUi } from "../utils/statusNormalizers";
+import { QUERY_KEYS } from "../constants/queryKeys";
+import { parsePaginatedResponse } from "../api/responseParsers";
 
 interface Task {
   id: number;
@@ -36,25 +40,6 @@ interface AuditLogResponse {
 
 const AUDIT_PAGE_SIZE = 10;
 
-const normalizeStatusForUi = (status?: string) => {
-  const normalized = (status || "PENDING").toUpperCase();
-  if (normalized === "IN_PROGRESS") return "ACTIVE";
-  if (normalized === "COMPLETED") return "RESOLVED";
-  return normalized;
-};
-
-const readOperatorRole = () => {
-  const token = localStorage.getItem("token");
-  if (!token) return null;
-
-  try {
-    const payload = JSON.parse(atob(token.split(".")[1])) as { role?: string };
-    return payload.role || null;
-  } catch {
-    return null;
-  }
-};
-
 export default function TaskDetailView() {
   const { id } = useParams();
   const location = useLocation();
@@ -68,13 +53,15 @@ export default function TaskDetailView() {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["task", id],
+    queryKey: QUERY_KEYS.task(id),
     enabled: Boolean(id),
     queryFn: async () => {
       const response = await apiClient.get(`/tasks/${id}`);
       return response.data as Task;
     },
     initialData: stateTask,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const {
@@ -82,7 +69,7 @@ export default function TaskDetailView() {
     isLoading: isAuditLoading,
     error: auditError,
   } = useQuery({
-    queryKey: ["task-audit-logs", id, auditLimit],
+    queryKey: QUERY_KEYS.taskAuditLogs(id, auditLimit),
     enabled: Boolean(id),
     queryFn: async () => {
       const response = await apiClient.get(`/tasks/${id}/audit-logs`, {
@@ -92,29 +79,14 @@ export default function TaskDetailView() {
         },
       });
 
-      if (Array.isArray(response.data)) {
-        return {
-          data: response.data as AuditLog[],
-          meta: {
-            total: (response.data as AuditLog[]).length,
-            limit: auditLimit,
-            offset: 0,
-            has_next: false,
-          },
-        } as AuditLogResponse;
-      }
-      if (Array.isArray(response.data.data))
-        return response.data as AuditLogResponse;
-      return {
-        data: [],
-        meta: {
-          total: 0,
-          limit: auditLimit,
-          offset: 0,
-          has_next: false,
-        },
-      } as AuditLogResponse;
+      return parsePaginatedResponse<AuditLog>(
+        response.data,
+        auditLimit,
+        0,
+      ) as AuditLogResponse;
     },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const auditLogs = auditResponse?.data || [];
@@ -169,7 +141,7 @@ export default function TaskDetailView() {
                     Status
                   </p>
                   <p className="text-sm font-mono text-[#e5e1e4]">
-                    {normalizeStatusForUi(task.status)}
+                    {normalizeTaskStatusForUi(task.status)}
                   </p>
                 </div>
                 <div>

@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import TopNavBar from "../components/TopNavBar";
+import { readOperatorIdentity } from "../utils/authToken";
 
 interface Operator {
   rank: string;
@@ -8,20 +9,8 @@ interface Operator {
   role: string;
 }
 
-function readOperatorFromToken(): Operator | null {
-  const token = localStorage.getItem("token");
-  if (!token) return null;
-
-  try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
-    return payload as Operator;
-  } catch {
-    return null;
-  }
-}
-
 export default function MainLayout() {
-  const operator = readOperatorFromToken();
+  const operator = readOperatorIdentity();
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-[#131315] text-[#e5e1e4] flex">

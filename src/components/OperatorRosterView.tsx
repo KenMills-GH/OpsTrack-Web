@@ -1,24 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import apiClient from "../api/axios";
-import { getApiErrorMessage } from "../utils/apiError";
 import { QUERY_KEYS } from "../constants/queryKeys";
 import { parsePaginatedResponse } from "../api/responseParsers";
+import { getApiErrorMessage } from "../utils/apiError";
 
-interface AuditLog {
+interface Operator {
   id: number;
-  operator_id?: number | null;
-  operator_name?: string | null;
-  task_id?: number | null;
-  action: string;
-  resource: string;
-  details?: string | null;
-  logged_at?: string;
+  name: string;
+  rank: string;
+  clearance_level: string;
+  email: string;
+  is_active: boolean;
 }
 
-interface AuditLogResponse {
-  data: AuditLog[];
-  meta?: {
+interface OperatorResponse {
+  data: Operator[];
+  meta: {
     total: number;
     limit: number;
     offset: number;
@@ -26,47 +25,41 @@ interface AuditLogResponse {
   };
 }
 
-const LOG_PAGE_SIZE = 20;
+const PAGE_SIZE = 20;
 
-export default function LogsView() {
+export default function OperatorRosterView() {
+  const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
 
   const {
-    data: auditResponse,
+    data: rosterResponse,
     isLoading,
     isFetching,
     error,
     refetch,
-  } = useQuery({
-    queryKey: QUERY_KEYS.allAuditLogs(currentPage),
+  } = useQuery<OperatorResponse>({
+    queryKey: QUERY_KEYS.usersPage(currentPage),
     queryFn: async () => {
-      const response = await apiClient.get("/tasks/audit-logs", {
+      const response = await apiClient.get("/users", {
         params: {
-          limit: LOG_PAGE_SIZE,
-          offset: (currentPage - 1) * LOG_PAGE_SIZE,
+          limit: PAGE_SIZE,
+          offset: (currentPage - 1) * PAGE_SIZE,
         },
       });
-
-      return parsePaginatedResponse<AuditLog>(
+      return parsePaginatedResponse<Operator>(
         response.data,
-        LOG_PAGE_SIZE,
-        (currentPage - 1) * LOG_PAGE_SIZE,
-      ) as AuditLogResponse;
+        PAGE_SIZE,
+        (currentPage - 1) * PAGE_SIZE,
+      ) as OperatorResponse;
     },
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
 
-  const logs = auditResponse?.data || [];
-  const paginationMeta = auditResponse?.meta;
-  const totalLogs = paginationMeta?.total ?? logs.length;
-  const totalPages = Math.max(1, Math.ceil(totalLogs / LOG_PAGE_SIZE));
-  const formatTimestamp = (value?: string) => {
-    if (!value) return "Unavailable";
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return "Unavailable";
-    return parsed.toLocaleString();
-  };
+  const operators = rosterResponse?.data || [];
+  const meta = rosterResponse?.meta;
+  const total = meta?.total ?? operators.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <main className="flex-1 overflow-hidden p-4 md:p-6">
@@ -74,10 +67,10 @@ export default function LogsView() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <p className="text-[10px] uppercase tracking-[0.2em] text-[#919191]">
-              Audit Endpoint
+              Admin Endpoint
             </p>
             <h1 className="text-lg font-bold uppercase tracking-widest">
-              GET /tasks/audit-logs
+              GET /users
             </h1>
           </div>
 
@@ -94,9 +87,9 @@ export default function LogsView() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           <div className="border border-[#353437] bg-[#131315] p-3">
             <p className="text-[10px] uppercase tracking-widest text-[#919191]">
-              Total Logs
+              Total Operators
             </p>
-            <p className="text-lg font-mono text-[#e5e1e4]">{totalLogs}</p>
+            <p className="text-lg font-mono text-[#e5e1e4]">{total}</p>
           </div>
           <div className="border border-[#353437] bg-[#131315] p-3">
             <p className="text-[10px] uppercase tracking-widest text-[#919191]">
@@ -114,7 +107,7 @@ export default function LogsView() {
 
         {error && (
           <p className="border border-[#93000a] bg-[#93000a] px-3 py-2 text-xs font-mono text-white">
-            {getApiErrorMessage(error, "Failed to load system audit log.")}
+            {getApiErrorMessage(error, "Failed to load operator roster.")}
           </p>
         )}
 
@@ -122,56 +115,80 @@ export default function LogsView() {
           <table className="min-w-full text-left">
             <thead>
               <tr className="border-b border-[#353437] text-[10px] uppercase tracking-[0.2em] text-[#919191]">
-                <th className="px-3 py-2 font-normal">Time</th>
-                <th className="px-3 py-2 font-normal">Operator</th>
-                <th className="px-3 py-2 font-normal">Action</th>
-                <th className="px-3 py-2 font-normal">Resource</th>
-                <th className="px-3 py-2 font-normal">Task</th>
-                <th className="px-3 py-2 font-normal">Details</th>
+                <th className="px-3 py-2 font-normal">ID</th>
+                <th className="px-3 py-2 font-normal">Name</th>
+                <th className="px-3 py-2 font-normal">Rank</th>
+                <th className="px-3 py-2 font-normal">Clearance</th>
+                <th className="px-3 py-2 font-normal">Email</th>
+                <th className="px-3 py-2 font-normal">Active</th>
+                <th className="px-3 py-2 font-normal">Actions</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
                 <tr>
-                  <td className="px-3 py-4 text-sm text-[#919191]" colSpan={6}>
-                    Loading full audit ledger...
+                  <td className="px-3 py-4 text-sm text-[#919191]" colSpan={7}>
+                    Loading operator roster...
                   </td>
                 </tr>
               )}
 
-              {!isLoading && !error && logs.length === 0 && (
+              {!isLoading && !error && operators.length === 0 && (
                 <tr>
-                  <td className="px-3 py-4 text-sm text-[#919191]" colSpan={6}>
-                    No audit records available.
+                  <td className="px-3 py-4 text-sm text-[#919191]" colSpan={7}>
+                    No operators on record.
                   </td>
                 </tr>
               )}
 
               {!isLoading &&
                 !error &&
-                logs.map((log) => (
+                operators.map((op) => (
                   <tr
-                    key={log.id}
-                    className="border-b border-[#2a2a2c] text-sm align-top"
+                    key={op.id}
+                    className="border-b border-[#2a2a2c] text-sm align-middle"
                   >
                     <td className="px-3 py-3 font-mono text-xs text-[#919191]">
-                      {formatTimestamp(log.logged_at)}
-                    </td>
-                    <td className="px-3 py-3 font-mono text-xs">
-                      {log.operator_name ||
-                        (log.operator_id ? `ID:${log.operator_id}` : "Unknown")}
-                    </td>
-                    <td className="px-3 py-3 font-mono text-xs text-[#e5e1e4]">
-                      {log.action}
+                      #{op.id}
                     </td>
                     <td className="px-3 py-3 text-xs text-[#e5e1e4]">
-                      {log.resource}
+                      {op.name}
+                    </td>
+                    <td className="px-3 py-3 font-mono text-xs text-[#e5e1e4]">
+                      {op.rank}
                     </td>
                     <td className="px-3 py-3 font-mono text-xs text-[#919191]">
-                      {log.task_id ? `#${log.task_id}` : "N/A"}
+                      {op.clearance_level}
                     </td>
                     <td className="px-3 py-3 text-xs text-[#919191]">
-                      {log.details || "No detail payload"}
+                      {op.email}
+                    </td>
+                    <td className="px-3 py-3 font-mono text-xs">
+                      <span
+                        className={
+                          op.is_active ? "text-[#4edea3]" : "text-[#93000a]"
+                        }
+                      >
+                        {op.is_active ? "YES" : "NO"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/patch-user/${op.id}`)}
+                          className="border border-[#353437] bg-[#353437] px-2 py-1 text-[10px] uppercase tracking-widest text-[#e5e1e4]"
+                        >
+                          PATCH
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/delete-user/${op.id}`)}
+                          className="border border-[#93000a] bg-[#93000a] px-2 py-1 text-[10px] uppercase tracking-widest text-white"
+                        >
+                          DELETE
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -181,7 +198,7 @@ export default function LogsView() {
 
         <div className="flex items-center justify-between border border-[#353437] bg-[#131315] px-3 py-2 text-[10px] uppercase tracking-[0.2em] text-[#919191]">
           <p>
-            Page {currentPage} of {totalPages} | Total Logs: {totalLogs}
+            Page {currentPage} of {totalPages} | Total Operators: {total}
           </p>
           <div className="flex gap-2">
             <button
@@ -194,9 +211,7 @@ export default function LogsView() {
             </button>
             <button
               type="button"
-              onClick={() =>
-                setCurrentPage((previous) => Math.max(1, previous - 1))
-              }
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
               disabled={currentPage === 1 || isFetching}
               className="border border-[#353437] px-3 py-1 text-[#e5e1e4] disabled:opacity-40"
             >
@@ -205,11 +220,9 @@ export default function LogsView() {
             <button
               type="button"
               onClick={() =>
-                setCurrentPage((previous) =>
-                  paginationMeta?.has_next ? previous + 1 : previous,
-                )
+                setCurrentPage((prev) => (meta?.has_next ? prev + 1 : prev))
               }
-              disabled={!paginationMeta?.has_next || isFetching}
+              disabled={!meta?.has_next || isFetching}
               className="border border-[#353437] px-3 py-1 text-[#e5e1e4] disabled:opacity-40"
             >
               Next

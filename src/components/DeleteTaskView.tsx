@@ -1,8 +1,9 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AxiosError } from "axios";
 import { useState } from "react";
 import apiClient from "../api/axios";
+import { getApiErrorMessage } from "../utils/apiError";
+import { QUERY_KEYS } from "../constants/queryKeys";
 
 interface Task {
   id: number;
@@ -20,23 +21,19 @@ export default function DeleteTaskView() {
   const [message, setMessage] = useState<string | null>(null);
 
   const {
-    data: tasks,
+    data: task,
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["tasks"],
+    queryKey: QUERY_KEYS.task(id),
+    enabled: Boolean(id),
     queryFn: async () => {
-      const response = await apiClient.get("/tasks");
-      if (Array.isArray(response.data)) return response.data as Task[];
-      if (Array.isArray(response.data.tasks))
-        return response.data.tasks as Task[];
-      if (Array.isArray(response.data.data))
-        return response.data.data as Task[];
-      return [] as Task[];
+      const response = await apiClient.get(`/tasks/${id}`);
+      return response.data as Task;
     },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
-
-  const task = (tasks || []).find((entry) => String(entry.id) === id);
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -44,14 +41,12 @@ export default function DeleteTaskView() {
       return apiClient.delete(`/tasks/${id}`);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.task(id) });
+      await queryClient.invalidateQueries({ queryKey: QUERY_KEYS.tasks });
       navigate("/dashboard");
     },
     onError: (caughtError) => {
-      const axiosError = caughtError as AxiosError<{ message?: string }>;
-      setMessage(
-        axiosError.response?.data?.message || "DELETE /tasks/:id failed.",
-      );
+      setMessage(getApiErrorMessage(caughtError, "DELETE /tasks/:id failed."));
     },
   });
 
@@ -71,13 +66,9 @@ export default function DeleteTaskView() {
         </header>
 
         {isLoading && <p className="text-sm text-[#919191]">Loading task...</p>}
-        {error && (
-          <p className="text-sm text-red-400">Failed to load task list.</p>
-        )}
-        {!isLoading && !task && (
-          <p className="text-sm text-[#919191]">
-            Task not found in current response set.
-          </p>
+        {error && <p className="text-sm text-red-400">Failed to load task.</p>}
+        {!isLoading && !error && !task && (
+          <p className="text-sm text-[#919191]">Task not found.</p>
         )}
 
         {task && (

@@ -2,6 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import apiClient from "../api/axios";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { normalizeTaskStatusForUi } from "../utils/statusNormalizers";
+import { QUERY_KEYS } from "../constants/queryKeys";
+import { parsePaginatedResponse } from "../api/responseParsers";
 
 interface Task {
   id: number;
@@ -37,13 +40,6 @@ const SORT_FIELDS = [
 
 type SortField = (typeof SORT_FIELDS)[number];
 type SortDirection = "asc" | "desc";
-
-const normalizeStatusForUi = (status?: string) => {
-  const normalized = (status || "PENDING").toUpperCase();
-  if (normalized === "IN_PROGRESS") return "ACTIVE";
-  if (normalized === "COMPLETED") return "RESOLVED";
-  return normalized;
-};
 
 const getPriorityClass = (priority?: string) => {
   const normalized = (priority || "LOW").toUpperCase();
@@ -86,7 +82,7 @@ export default function Dashboard() {
     error,
     refetch,
   } = useQuery({
-    queryKey: ["tasks", currentPage, sortField, sortDirection],
+    queryKey: QUERY_KEYS.tasksDashboard(currentPage, sortField, sortDirection),
     queryFn: async () => {
       const response = await apiClient.get("/tasks", {
         params: {
@@ -97,51 +93,14 @@ export default function Dashboard() {
         },
       });
 
-      if (Array.isArray(response.data)) {
-        const fallbackRows = response.data as Task[];
-        return {
-          data: fallbackRows,
-          meta: {
-            total: fallbackRows.length,
-            limit: PAGE_SIZE,
-            offset: (currentPage - 1) * PAGE_SIZE,
-            has_next: false,
-          },
-        } as TaskListResponse;
-      }
-      if (response.data.tasks && Array.isArray(response.data.tasks)) {
-        const fallbackRows = response.data.tasks as Task[];
-        return {
-          data: fallbackRows,
-          meta: {
-            total: fallbackRows.length,
-            limit: PAGE_SIZE,
-            offset: (currentPage - 1) * PAGE_SIZE,
-            has_next: false,
-          },
-        } as TaskListResponse;
-      }
-      if (response.data.data && Array.isArray(response.data.data)) {
-        return {
-          data: response.data.data as Task[],
-          meta: {
-            total: response.data.meta?.total ?? 0,
-            limit: response.data.meta?.limit ?? PAGE_SIZE,
-            offset: response.data.meta?.offset ?? 0,
-            has_next: Boolean(response.data.meta?.has_next),
-          },
-        } as TaskListResponse;
-      }
-      return {
-        data: [],
-        meta: {
-          total: 0,
-          limit: PAGE_SIZE,
-          offset: (currentPage - 1) * PAGE_SIZE,
-          has_next: false,
-        },
-      } as TaskListResponse;
+      return parsePaginatedResponse<Task>(
+        response.data,
+        PAGE_SIZE,
+        (currentPage - 1) * PAGE_SIZE,
+      ) as TaskListResponse;
     },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const tasks = taskResponse?.data || [];
@@ -165,7 +124,7 @@ export default function Dashboard() {
 
     return rawTasks.reduce(
       (acc, task: Task) => {
-        const status = normalizeStatusForUi(task.status);
+        const status = normalizeTaskStatusForUi(task.status);
 
         if (status === "PENDING") acc.pending += 1;
         if (status === "ACTIVE") acc.active += 1;
@@ -332,7 +291,7 @@ export default function Dashboard() {
                       </span>
                     </td>
                     <td className="px-3 py-3 font-mono text-xs">
-                      {normalizeStatusForUi(task.status)}
+                      {normalizeTaskStatusForUi(task.status)}
                     </td>
                     <td className="px-3 py-3 font-mono text-xs text-[#919191]">
                       {task.assignee_name ||
