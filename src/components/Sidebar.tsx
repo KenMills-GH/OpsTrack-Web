@@ -10,6 +10,7 @@ export default function Sidebar() {
     ...(operatorRole === "ADMIN"
       ? [
           { label: "GET /users", icon: "GET", to: "/operator-roster" },
+          { label: "POST /users", icon: "POST", to: "/create-user" },
           { label: "LOGS", icon: "LOG", to: "/logs" },
         ]
       : []),

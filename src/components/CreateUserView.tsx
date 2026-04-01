@@ -174,7 +174,7 @@ export default function CreateUserView() {
               onClick={() => navigate("/dashboard")}
               className="border border-[#353437] bg-[#131315] px-4 py-2 text-[10px] uppercase tracking-[0.2em]"
             >
-              Back To Login
+              Back To Dashboard
             </button>
             <button
               type="submit"

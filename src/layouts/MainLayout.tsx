@@ -3,12 +3,6 @@ import Sidebar from "../components/Sidebar";
 import TopNavBar from "../components/TopNavBar";
 import { readOperatorIdentity } from "../utils/authToken";
 
-interface Operator {
-  rank: string;
-  name: string;
-  role: string;
-}
-
 export default function MainLayout() {
   const operator = readOperatorIdentity();
 

@@ -2,8 +2,8 @@ import { z } from "zod";
 
 export const patchTaskStatusValues = [
   "PENDING",
-  "COMPLETED",
-  "ARCHIVED",
+  "ACTIVE",
+  "RESOLVED",
 ] as const;
 export const patchTaskPriorityValues = [
   "LOW",
@@ -13,7 +13,7 @@ export const patchTaskPriorityValues = [
 ] as const;
 
 export const patchTaskSchema = z.object({
-  status: z.enum(patchTaskStatusValues),
+  status: z.enum(patchTaskStatusValues, { error: "Status must be PENDING, ACTIVE, or RESOLVED" }),
   priority_level: z.enum(patchTaskPriorityValues),
   assigned_to: z
     .string()

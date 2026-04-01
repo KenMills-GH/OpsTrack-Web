@@ -110,14 +110,6 @@ export default function Login() {
           >
             {isSubmitting ? "Posting" : "Run Login Request"}
           </button>
-
-          <button
-            type="button"
-            onClick={() => navigate("/create-user")}
-            className="w-full border border-[#353437] bg-[#131315] px-3 py-3 text-xs uppercase tracking-[0.2em] text-[#e5e1e4] font-bold"
-          >
-            Go To POST /users
-          </button>
         </form>
       </div>
     </div>

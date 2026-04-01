@@ -1,8 +1,13 @@
 import axios from "axios";
 
+const configuredApiBaseUrl =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+
+const normalizedApiBaseUrl = configuredApiBaseUrl.replace(/\/+$/, "");
+
 // 1. Create the base radio instance pointing to Headquarters
 const apiClient = axios.create({
-  baseURL: "http://localhost:5000/api",
+  baseURL: normalizedApiBaseUrl,
   headers: {
     "Content-Type": "application/json",
   },

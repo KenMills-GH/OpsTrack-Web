@@ -30,8 +30,10 @@ interface User {
 
 const normalizePatchStatus = (value?: string) => {
   const normalized = (value || "PENDING").toUpperCase();
-  if (normalized === "IN_PROGRESS") return "PENDING";
-  return normalized;
+  if (normalized === "ACTIVE" || normalized === "PENDING" || normalized === "RESOLVED") {
+    return normalized;
+  }
+  return "PENDING";
 };
 
 export default function PatchTaskView() {

@@ -25,12 +25,12 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<Login />} />
-          <Route path="/create-user" element={<CreateUserView />} />
 
           <Route element={<ProtectedRoute />}>
             <Route element={<MainLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route element={<ProtectedRoute requiredRole="ADMIN" />}>
+                <Route path="/create-user" element={<CreateUserView />} />
                 <Route path="/logs" element={<LogsView />} />
                 <Route path="/delete-task/:id" element={<DeleteTaskView />} />
                 <Route
