@@ -241,7 +241,7 @@ export default function Dashboard() {
           </p>
         )}
 
-        <div className="border border-[#353437] bg-[#131315] flex-1 overflow-auto">
+        <div className="border border-[#353437] bg-[#131315] max-h-[56vh] overflow-auto">
           <table className="min-w-full text-left">
             <thead>
               <tr className="border-b border-[#353437] text-[10px] uppercase tracking-[0.2em] text-[#919191]">
