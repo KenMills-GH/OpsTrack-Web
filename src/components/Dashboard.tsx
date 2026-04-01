@@ -143,8 +143,8 @@ export default function Dashboard() {
   const sortedRows = taskRows;
 
   return (
-    <main className="flex-1 overflow-auto p-4 md:p-6">
-      <section className="border border-[#353437] bg-[#1f1f21] p-4 md:p-6 flex flex-col gap-4">
+    <main className="flex-1 overflow-auto bg-[#1f1f21] p-4 md:p-6">
+      <section className="min-h-full border border-[#353437] bg-[#1f1f21] p-4 md:p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <p className="text-[10px] uppercase tracking-[0.2em] text-[#919191]">
