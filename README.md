@@ -17,17 +17,17 @@ This frontend is deliberately positioned as a **control surface for backend vali
 
 ## Demo Access
 
-Use the seeded demo accounts to inspect both interface states:
+Use the seeded verified accounts to inspect both interface states:
 
 ### Admin Access
 
-- **Email:** `op10@opstrack.mil`
+- **Email:** `k.mills@opstrack.mil`
 - **Password:** `password123`
 - **Role:** `ADMIN`
 
 ### Member Access
 
-- **Email:** `op11@opstrack.mil`
+- **Email:** `j.miller@opstrack.mil`
 - **Password:** `password123`
 - **Role:** `MEMBER`
 
