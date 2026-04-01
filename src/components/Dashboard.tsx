@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import apiClient from "../api/axios";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { normalizeTaskStatusForUi } from "../utils/statusNormalizers";
 import { QUERY_KEYS } from "../constants/queryKeys";
@@ -27,7 +27,19 @@ interface TaskListResponse {
   };
 }
 
-const PAGE_SIZE = 10;
+const FALLBACK_PAGE_SIZE = 10;
+const MIN_PAGE_SIZE = 8;
+const MAX_PAGE_SIZE = 20;
+
+const calculatePageSize = (viewportHeight: number) => {
+  const RESERVED_LAYOUT_HEIGHT = 430;
+  const ESTIMATED_ROW_HEIGHT = 36;
+  const visibleRows = Math.floor(
+    (viewportHeight - RESERVED_LAYOUT_HEIGHT) / ESTIMATED_ROW_HEIGHT,
+  );
+
+  return Math.max(MIN_PAGE_SIZE, Math.min(MAX_PAGE_SIZE, visibleRows));
+};
 
 const SORT_FIELDS = [
   "all",
@@ -65,6 +77,28 @@ export default function Dashboard() {
   const [sortField, setSortField] = useState<SortField>("all");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(() => {
+    if (typeof window === "undefined") return FALLBACK_PAGE_SIZE;
+    return calculatePageSize(window.innerHeight);
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleResize = () => {
+      const nextPageSize = calculatePageSize(window.innerHeight);
+      setPageSize((previousPageSize) =>
+        previousPageSize === nextPageSize ? previousPageSize : nextPageSize,
+      );
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
 
   // "newest" sorts by ID but the UI label treats "asc" as newest-first (descending ID)
   const apiSort = SORT_FIELD_MAP[sortField];
@@ -82,12 +116,17 @@ export default function Dashboard() {
     error,
     refetch,
   } = useQuery({
-    queryKey: QUERY_KEYS.tasksDashboard(currentPage, sortField, sortDirection),
+    queryKey: QUERY_KEYS.tasksDashboard(
+      currentPage,
+      sortField,
+      sortDirection,
+      pageSize,
+    ),
     queryFn: async () => {
       const response = await apiClient.get("/tasks", {
         params: {
-          limit: PAGE_SIZE,
-          offset: (currentPage - 1) * PAGE_SIZE,
+          limit: pageSize,
+          offset: (currentPage - 1) * pageSize,
           sort: apiSort,
           direction: apiDirection,
         },
@@ -95,8 +134,8 @@ export default function Dashboard() {
 
       return parsePaginatedResponse<Task>(
         response.data,
-        PAGE_SIZE,
-        (currentPage - 1) * PAGE_SIZE,
+        pageSize,
+        (currentPage - 1) * pageSize,
       ) as TaskListResponse;
     },
     staleTime: 60_000,
@@ -137,7 +176,13 @@ export default function Dashboard() {
   }, [tasks]);
 
   const totalRows = paginationMeta?.total ?? tasks.length;
-  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   // Sorting is handled server-side; taskRows is already in the correct order
   const sortedRows = taskRows;

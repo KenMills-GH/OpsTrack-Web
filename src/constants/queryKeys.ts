@@ -1,7 +1,11 @@
 export const QUERY_KEYS = {
   tasks: ["tasks"] as const,
-  tasksDashboard: (page: number, sortField: string, sortDirection: string) =>
-    ["tasks", page, sortField, sortDirection] as const,
+  tasksDashboard: (
+    page: number,
+    sortField: string,
+    sortDirection: string,
+    pageSize: number,
+  ) => ["tasks", page, sortField, sortDirection, pageSize] as const,
   task: (id: string | number | undefined) => ["task", id] as const,
   users: ["users"] as const,
   usersPage: (page: number) => ["users", page] as const,
